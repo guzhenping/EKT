@@ -14,7 +14,7 @@ const (
 )
 
 var MainBlockChain *blockchain.BlockChain
-var MainBlockChainConsensus *consensus.DPOSConsensus
+var MainBlockChainConsensus *consensus.DbftConsensus
 
 var blockchainManager *BlockchainManager
 
@@ -29,7 +29,7 @@ func Init() {
 		Consensuses: make(map[int64]i_consensus.Consensus),
 	}
 	MainBlockChain = blockchain.NewBlockChain(blockchain.BackboneChainId, blockchain.BackboneConsensus, blockchain.BackboneChainFee, nil, blockchain.BackboneBlockInterval)
-	MainBlockChainConsensus = consensus.NewDPoSConsensus(MainBlockChain)
+	MainBlockChainConsensus = consensus.NewDbftConsensus(MainBlockChain)
 	go MainBlockChainConsensus.StableRun()
 	value, err := db.GetDBInst().Get([]byte(BlockchainManagerDBKey))
 	if err != nil {
@@ -43,12 +43,12 @@ func Init() {
 	for _, bc := range blockchains {
 		blockchainManager.Blockchains[bc.ChainId] = bc
 		switch bc.Consensus {
-		case i_consensus.DPOS:
-			consensus := consensus.NewDPoSConsensus(bc)
+		case i_consensus.DBFT:
+			consensus := consensus.NewDbftConsensus(bc)
 			blockchainManager.Consensuses[bc.ChainId] = consensus
 			go consensus.StableRun()
 		default:
-			consensus := consensus.NewDPoSConsensus(bc)
+			consensus := consensus.NewDbftConsensus(bc)
 			blockchainManager.Consensuses[bc.ChainId] = consensus
 			go consensus.StableRun()
 		}
@@ -59,6 +59,6 @@ func GetMainChain() *blockchain.BlockChain {
 	return MainBlockChain
 }
 
-func GetMainChainConsensus() *consensus.DPOSConsensus {
+func GetMainChainConsensus() *consensus.DbftConsensus {
 	return MainBlockChainConsensus
 }

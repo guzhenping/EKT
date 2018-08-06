@@ -10,11 +10,10 @@ import (
 )
 
 type Peer struct {
-	PeerId         string `json:"peerId"`
+	Account        string `json:"account"`
 	Address        string `json:"address"`
 	Port           int32  `json:"port"`
 	AddressVersion int    `json:"addressVersion"`
-	AccountAddress string `json:"accountAddress"`
 }
 
 type Peers []Peer
@@ -38,7 +37,7 @@ func (peer Peer) IsAlive() bool {
 }
 
 func (peer Peer) Equal(_peer Peer) bool {
-	if strings.EqualFold(peer.PeerId, _peer.PeerId) && strings.EqualFold(peer.Address, _peer.Address) && peer.Port == _peer.Port && peer.AddressVersion == _peer.AddressVersion {
+	if strings.EqualFold(peer.Account, _peer.Account) && strings.EqualFold(peer.Address, _peer.Address) && peer.Port == _peer.Port && peer.AddressVersion == _peer.AddressVersion {
 		return true
 	}
 	return false

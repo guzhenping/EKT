@@ -113,9 +113,11 @@ func (block *Block) CreateGenesisAccount(account types.Account) bool {
 
 func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *userevent.TxResult {
 	account, _ := block.GetAccount(tx.GetFrom())
-	recieverAccount, err := block.GetAccount(tx.GetTo())
-	if err != nil || nil == recieverAccount {
-		*recieverAccount = types.CreateAccount(tx.GetTo(), 0)
+	var receiverAccount *types.Account
+	if block.ExistAddress(tx.GetTo()) {
+		receiverAccount, _ = block.GetAccount(tx.GetTo())
+	} else {
+		receiverAccount = types.NewAccount(tx.GetTo())
 	}
 	var txResult *userevent.TxResult
 
@@ -132,9 +134,9 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 		} else {
 			block.TotalFee++
 			account.ReduceAmount(tx.Amount + fee)
-			recieverAccount.AddAmount(tx.Amount)
+			receiverAccount.AddAmount(tx.Amount)
 			block.StatTree.MustInsert(tx.GetFrom(), account.ToBytes())
-			block.StatTree.MustInsert(tx.GetTo(), recieverAccount.ToBytes())
+			block.StatTree.MustInsert(tx.GetTo(), receiverAccount.ToBytes())
 			txResult = userevent.NewTransactionResult(tx, fee, true, "")
 		}
 	} else {
@@ -146,13 +148,13 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 			block.TotalFee++
 			account.Balances[tx.TokenAddress] -= tx.Amount
 			account.ReduceAmount(fee)
-			if recieverAccount.Balances == nil {
-				recieverAccount.Balances = make(map[string]int64)
-				recieverAccount.Balances[tx.TokenAddress] = 0
+			if receiverAccount.Balances == nil {
+				receiverAccount.Balances = make(map[string]int64)
+				receiverAccount.Balances[tx.TokenAddress] = 0
 			}
-			recieverAccount.Balances[tx.TokenAddress] += tx.Amount
+			receiverAccount.Balances[tx.TokenAddress] += tx.Amount
 			block.StatTree.MustInsert(tx.GetFrom(), account.ToBytes())
-			block.StatTree.MustInsert(tx.GetTo(), recieverAccount.ToBytes())
+			block.StatTree.MustInsert(tx.GetTo(), receiverAccount.ToBytes())
 			txResult = userevent.NewTransactionResult(tx, fee, true, "")
 		}
 	}

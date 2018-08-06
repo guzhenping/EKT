@@ -53,6 +53,7 @@ func init() {
 }
 
 func main() {
+	fmt.Println(conf.EKTConfig.Node)
 	fmt.Printf("server listen on :%d \n", conf.EKTConfig.Node.Port)
 	err := http.ListenAndServe(fmt.Sprintf(":%d", conf.EKTConfig.Node.Port), nil)
 	if err != nil {
@@ -97,7 +98,7 @@ func InitService(confPath string) error {
 func initPeerId() error {
 	if len(conf.EKTConfig.PrivateKey) > 0 {
 		log.Info("Peer private key is: %s ", conf.EKTConfig.PrivateKey)
-		log.Info("Current peerId is: %s ", conf.EKTConfig.Node.PeerId)
+		log.Info("Current peerId is: %s ", conf.EKTConfig.Node.Account)
 	} else {
 		log.Info("This is not delegate node.")
 	}
