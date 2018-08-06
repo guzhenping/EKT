@@ -88,14 +88,14 @@ func newTransaction(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 func broadcastTx(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	IP := strings.Split(req.R.RemoteAddr, ":")[0]
 	broadcasted := false
-	for _, peer := range param.MainChainDPosNode {
+	for _, peer := range param.MainChainDelegateNode {
 		if peer.Address == IP {
 			broadcasted = true
 			break
 		}
 	}
 	if !broadcasted {
-		for _, peer := range param.MainChainDPosNode {
+		for _, peer := range param.MainChainDelegateNode {
 			if !peer.Equal(conf.EKTConfig.Node) {
 				url := fmt.Sprintf(`http://%s:%d/transaction/api/newTransaction`, peer.Address, peer.Port)
 				util.HttpPost(url, req.Body)
@@ -106,7 +106,7 @@ func broadcastTx(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 }
 
 func synchronizeTransaction(txId []byte) {
-	for _, peer := range param.MainChainDPosNode {
+	for _, peer := range param.MainChainDelegateNode {
 		if value, err := peer.GetDBValue(txId); err != nil {
 			db.GetDBInst().Set(txId, value)
 		}

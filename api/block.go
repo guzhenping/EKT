@@ -57,7 +57,7 @@ func newBlock(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	if !strings.EqualFold(IP, conf.EKTConfig.Node.Address) &&
 		strings.EqualFold(block.GetRound().Peers[block.GetRound().CurrentIndex].Address, IP) && block.GetRound().MyIndex() != -1 &&
 		(block.GetRound().MyIndex()-block.GetRound().CurrentIndex+len(block.GetRound().Peers))%len(block.GetRound().Peers) < len(block.GetRound().Peers)/2 {
-		//当前节点是打包节点广播，而且当前节点满足(currentIndex - miningIndex + len(DPoSNodes)) % len(DPoSNodes) < len(DPoSNodes) / 2
+		//当前节点是打包节点广播，而且当前节点满足(currentIndex - miningIndex + len(DelegateNodes)) % len(DelegateNodes) < len(DelegateNodes) / 2
 		if _, forward := req.Query["forward"]; !forward {
 			for i := 0; i < len(block.GetRound().Peers); i++ {
 				if i == block.GetRound().CurrentIndex || i == block.GetRound().MyIndex() {
