@@ -20,6 +20,7 @@ type IUserEvent interface {
 	GetFrom() []byte
 	Type() string
 	EventId() string
+	SetSuccess()
 }
 
 type SortedUserEvent []IUserEvent
@@ -29,7 +30,11 @@ func Validate(userEvent IUserEvent) bool {
 	if err != nil {
 		return false
 	}
-	return bytes.EqualFold(types.FromPubKeyToAddress(pubKey), userEvent.GetFrom())
+	result := bytes.EqualFold(types.FromPubKeyToAddress(pubKey), userEvent.GetFrom())
+	if result {
+		userEvent.SetSuccess()
+	}
+	return result
 }
 
 func (events SortedUserEvent) Assert() bool {
