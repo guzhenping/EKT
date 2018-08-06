@@ -11,10 +11,10 @@ import (
 
 func init() {
 	x_router.All("/peer/api/ping", ping)
-	x_router.Post("/peer/api/peers", dposPeers)
+	x_router.Post("/peer/api/peers", delegatePeers)
 }
 
-func dposPeers(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
+func delegatePeers(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	peers := blockchain_manager.MainBlockChain.GetLastBlock().GetRound().Peers
 	return x_resp.Success(peers), x_err.NewXErr(nil)
 }
