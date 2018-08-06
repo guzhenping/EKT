@@ -188,7 +188,7 @@ func (dpos DPOSConsensus) ValidateSign(block blockchain.Block) bool {
 	if pubkey, err := crypto.RecoverPubKey(crypto.Sha3_256(block.CurrentHash), block.Signature); err != nil {
 		return false
 	} else {
-		if !strings.EqualFold(hex.EncodeToString(crypto.Sha3_256(pubkey)), block.GetRound().Peers[block.GetRound().CurrentIndex].PeerId) {
+		if !strings.EqualFold(hex.EncodeToString(crypto.Sha3_256(pubkey)), block.GetRound().Peers[block.GetRound().CurrentIndex].Account) {
 			return false
 		}
 	}
@@ -573,7 +573,7 @@ func AliveDPoSPeerCount(peers p2p.Peers, print bool) int {
 	for _, peer := range peers {
 		if peer.IsAlive() {
 			if print {
-				log.Info("Peer %s is alive, address: %s \n", peer.PeerId, peer.Address)
+				log.Info("Peer %s is alive, address: %s \n", peer.Account, peer.Address)
 			}
 			count++
 		}

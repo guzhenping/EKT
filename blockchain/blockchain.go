@@ -20,7 +20,7 @@ import (
 var BackboneChainId int64 = 1
 
 const (
-	BackboneConsensus     = i_consensus.DPOS
+	BackboneConsensus     = i_consensus.DBFT
 	BackboneBlockInterval = 3 * time.Second
 	BackboneChainFee      = 510000
 )
