@@ -24,7 +24,6 @@ type Transaction struct {
 	Data         string         `json:"data"`
 	TokenAddress string         `json:"tokenAddress"`
 	Sign         types.HexBytes `json:"sign"`
-	success      bool           `json:"-"`
 }
 
 type TxResult struct {
@@ -136,10 +135,6 @@ func (transactions Transactions) Swap(i, j int) {
 func (tx *Transaction) TransactionId() string {
 	txData, _ := json.Marshal(tx)
 	return hex.EncodeToString(crypto.Sha3_256(txData))
-}
-
-func (tx Transaction) SetSuccess() {
-	tx.success = true
 }
 
 func (tx *Transaction) String() string {

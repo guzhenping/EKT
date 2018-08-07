@@ -12,7 +12,6 @@ type TokenIssue struct {
 	From      types.HexBytes `json:"from"`
 	Signature types.HexBytes `json:"signature"`
 	Nonce     int64          `json:"nonce"`
-	success   bool           `json:"-"`
 	EventType string         `json:"EventType"`
 }
 
@@ -41,10 +40,6 @@ func (event TokenIssue) EventId() string {
 	return hex.EncodeToString(crypto.Sha3_256(data))
 }
 
-func (event TokenIssue) SetSuccess() {
-	event.success = true
-}
-
 func FromBytes2TokenIssue(data []byte) (*TokenIssue, error) {
 	var tokenIssue TokenIssue
 	err := json.Unmarshal(data, &tokenIssue)
@@ -53,4 +48,9 @@ func FromBytes2TokenIssue(data []byte) (*TokenIssue, error) {
 	}
 	tokenIssue.EventType = TYPE_USEREVENT_PUBLIC_TOKEN
 	return &tokenIssue, nil
+}
+
+func (event TokenIssue) Bytes() []byte {
+	data, _ := json.Marshal(event)
+	return data
 }
