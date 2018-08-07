@@ -208,11 +208,21 @@ func (chain *BlockChain) WaitAndPack(ctxLog *ctxlog.ContextLog) *Block {
 					start = time.Now().UnixNano()
 				}
 				for _, event := range events {
-					tx, ok := event.(*userevent.Transaction)
-					if ok {
-						numTx++
-						block.NewTransaction(*tx, tx.Fee)
+					switch event.Type() {
+					case userevent.TYPE_USEREVENT_TRANSACTION:
+						tx, ok := event.(*userevent.Transaction)
+						if ok {
+							numTx++
+							block.NewTransaction(*tx, tx.Fee)
+						}
+					case userevent.TYPE_USEREVENT_PUBLIC_TOKEN:
+						issueToken, ok := event.(*userevent.TokenIssue)
+						if ok {
+							numTx++
+							block.IssueToken(*issueToken)
+						}
 					}
+
 					block.BlockBody.AddEvent(event)
 				}
 			}

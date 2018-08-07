@@ -19,7 +19,7 @@ func (body *BlockBody) AddEvent(event userevent.IUserEvent) {
 	body.Events = append(body.Events, event.EventId())
 }
 
-func FromBytes(data []byte) (*BlockBody, error) {
+func FromBytes2BLockBody(data []byte) (*BlockBody, error) {
 	var body BlockBody
 	err := json.Unmarshal(data, &body)
 	return &body, err
