@@ -108,12 +108,6 @@ func (dbft DbftConsensus) BlockFromPeer(ctxlog *ctxlog.ContextLog, block blockch
 		return
 	}
 
-	_block := block
-	if !dbft.syncBlockBody(&_block) {
-		ctxlog.Log("Sync body failed", true)
-		return
-	}
-
 	events, err := dbft.getBlockEvents(&block)
 	if err != nil {
 		ctxlog.Log("Get block events failed", true)
@@ -121,13 +115,65 @@ func (dbft DbftConsensus) BlockFromPeer(ctxlog *ctxlog.ContextLog, block blockch
 	}
 
 	// 对区块进行validate和recover，如果区块数据没问题，则发送投票给其他节点
-	if dbft.Blockchain.ValidateNextBlock(ctxlog, _block, events) {
+	if dbft.Blockchain.ValidateNextBlock(ctxlog, block, events) {
 		ctxlog.Log("SendVote", true)
 		dbft.BlockManager.SetBlockStatus(block.CurrentHash, blockchain.BLOCK_VOTED)
 		dbft.SendVote(block)
 	} else {
 		ctxlog.Log("error body", true)
 		dbft.BlockManager.SetBlockStatus(block.CurrentHash, blockchain.BLOCK_ERROR_BODY)
+	}
+}
+
+func (dbft DbftConsensus) getUserEvent(peer p2p.Peer, eventId string) (userevent.IUserEvent, error) {
+	id, err := hex.DecodeString(eventId)
+	if err != nil {
+		return nil, err
+	}
+	data, err := peer.GetDBValue(id)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.EqualFold(crypto.Sha3_256(data), id) {
+		return nil, errors.New("Invalid Response")
+	}
+	m := make(map[string]interface{})
+	err = json.Unmarshal(data, &m)
+	if err != nil {
+		return nil, err
+	}
+	eventType, exist := m["EventType"]
+	if exist {
+		t, ok := eventType.(string)
+		if !ok {
+			return nil, errors.New("Invalid event type")
+		}
+		switch t {
+		case userevent.TYPE_USEREVENT_PUBLIC_TOKEN:
+			var tokenIssue userevent.TokenIssue
+			err = json.Unmarshal(data, &tokenIssue)
+			if err != nil {
+				return nil, err
+			}
+			if !userevent.Validate(tokenIssue) {
+				return nil, errors.New("Invalid signature")
+			}
+			return &tokenIssue, nil
+		case userevent.TYPE_USEREVENT_TRANSACTION:
+			var tx userevent.Transaction
+			err = json.Unmarshal(data, &tx)
+			if err != nil {
+				return nil, err
+			}
+			if !userevent.Validate(tx) {
+				return nil, errors.New("Invalid signature")
+			}
+			return &tx, nil
+		default:
+			return nil, errors.New("Invalid event type")
+		}
+	} else {
+		return nil, errors.New("Invalid event type")
 	}
 }
 
@@ -138,34 +184,19 @@ func (dbft DbftConsensus) getBlockEvents(block *blockchain.Block) (list []userev
 	eventIds := block.BlockBody.Events
 	if len(eventIds) > 0 {
 		for _, eventId := range eventIds {
-			id, err := hex.DecodeString(eventId)
-			if err != nil {
-				return nil, err
-			}
 			eventGetter := pool.NewEventGetter(eventId)
 			dbft.Blockchain.Pool.EventGetter <- eventGetter
 			event := <-eventGetter.Chan
 			if event == nil {
-				data, err := block.Round.Peers[block.Round.CurrentIndex].GetDBValue(id)
-				if !bytes.EqualFold(crypto.Sha3_256(data), id) {
-					return nil, errors.New("Invalid Response")
-				}
+				event, err := dbft.getUserEvent(block.GetRound().Peers[block.GetRound().CurrentIndex], eventId)
 				if err != nil {
+					log.Crit("Invalid EventId %s, error: %s", eventId, err.Error())
 					return nil, err
 				}
-				var tx userevent.Transaction
-				err = json.Unmarshal(data, &tx)
-				if err != nil {
-					return nil, err
-				}
-				db.GetDBInst().Set(id, data)
-				event = tx
 				dbft.Blockchain.Pool.EventPutter <- event
 			}
 			if event != nil {
 				list = append(list, event)
-			} else {
-				return nil, err
 			}
 		}
 	}
@@ -179,7 +210,7 @@ func (dbft DbftConsensus) syncBlockBody(block *blockchain.Block) bool {
 		log.Info("Can not get body from mining node, return false.")
 		return false
 	}
-	block.BlockBody, err = blockchain.FromBytes(body)
+	block.BlockBody, err = blockchain.FromBytes2BLockBody(body)
 	if err != nil {
 		log.Info("Get an error body, return false.")
 		return false
@@ -681,7 +712,7 @@ func (dbft DbftConsensus) RecieveVoteResult(votes blockchain.Votes) bool {
 		if err != nil {
 
 		}
-		block.BlockBody, err = blockchain.FromBytes(body)
+		block.BlockBody, err = blockchain.FromBytes2BLockBody(body)
 		dbft.Blockchain.NotifyPool(block)
 		contextLog := ctxlog.NewContextLog("pack from vote result")
 		if dbft.IsMyTurn(contextLog) {

@@ -19,3 +19,8 @@ func (token Token) Address() []byte {
 	}
 	return crypto.Sha3_256(v)
 }
+
+func (event Token) Bytes() []byte {
+	data, _ := json.Marshal(event)
+	return data
+}

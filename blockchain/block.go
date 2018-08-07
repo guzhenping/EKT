@@ -80,9 +80,6 @@ func (block *Block) NewNonce() {
 }
 
 func (block Block) GetAccount(address []byte) (*types.Account, error) {
-	if block.StatTree == nil {
-		block.StatTree = MPTPlus.MTP_Tree(db.GetDBInst(), block.StatRoot)
-	}
 	value, err := block.StatTree.GetValue(address)
 	if err != nil {
 		return nil, err
@@ -96,9 +93,6 @@ func (block Block) GetAccount(address []byte) (*types.Account, error) {
 }
 
 func (block Block) ExistAddress(address []byte) bool {
-	if block.StatTree == nil {
-		block.StatTree = MPTPlus.MTP_Tree(db.GetDBInst(), block.StatRoot)
-	}
 	return block.StatTree.ContainsKey(address)
 }
 
@@ -125,6 +119,9 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 	if fee < block.Fee {
 		fee = block.Fee
 	}
+
+	// fee = 0
+	fee = 0
 
 	if tx.Nonce != account.Nonce+1 {
 		txResult = userevent.NewTransactionResult(tx, fee, false, "invalid nonce")
@@ -241,27 +238,23 @@ func (block Block) ValidateBlockStat(next Block, events []userevent.IUserEvent) 
 	_next := NewBlock(block)
 
 	//让新生成的区块执行peer传过来的body中的user events进行计算
-	if len(block.BlockBody.Events) > 0 {
-		//for _, eventId := range block.BlockBody.Events {
-		//}
+	if len(events) > 0 {
+		for _, event := range events {
+			switch event.Type() {
+			case userevent.TYPE_USEREVENT_TRANSACTION:
+				tx, ok := event.(*userevent.Transaction)
+				if ok {
+					_next.NewTransaction(*tx, tx.Fee)
+				}
+			case userevent.TYPE_USEREVENT_PUBLIC_TOKEN:
+				issueToken, ok := event.(*userevent.TokenIssue)
+				if ok {
+					_next.IssueToken(*issueToken)
+				}
+
+			}
+		}
 	}
-	//if block.BlockBody != nil {
-	//	block.BlockBody.Events.Range(func(key, value interface{}) bool {
-	//		_, ok1 := key.(string)
-	//		list, ok2 := value.([]string)
-	//		if ok1 && ok2 && len(list) > 0 {
-	//			for _, eventId := range list {
-	//				txId, err := hex.DecodeString(eventId)
-	//				if err != nil {
-	//					return false
-	//				}
-	//				tx := types.GetTransaction(txId)
-	//				_next.NewTransaction(*tx, tx.Fee)
-	//			}
-	//		}
-	//		return true
-	//	})
-	//}
 
 	// 更新默克尔树根
 	_next.UpdateMPTPlusRoot()
@@ -283,4 +276,8 @@ func (block *Block) Sign(privKey []byte) error {
 	Signature, err := crypto.Crypto(crypto.Sha3_256(block.CurrentHash), privKey)
 	block.Signature = Signature
 	return err
+}
+
+func (block *Block) IssueToken(event userevent.TokenIssue) {
+	block.TokenTree.MustInsert(event.Token.Address(), event.Token.Bytes())
 }
