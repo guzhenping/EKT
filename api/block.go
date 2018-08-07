@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -34,7 +33,6 @@ func blockByHeight(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	bc := blockchain_manager.MainBlockChain
 	height := req.MustGetInt64("height")
 	if bc.GetLastHeight() < height {
-		log.Info("Heigth %d is heigher than current height, current height is %d \n", height, bc.GetLastHeight())
 		return nil, x_err.New(-404, fmt.Sprintf("Heigth %d is heigher than current height, current height is %d \n ", height, bc.GetLastHeight()))
 	}
 	return x_resp.Return(bc.GetBlockByHeight(height))
@@ -46,7 +44,6 @@ func newBlock(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	var block blockchain.Block
 	json.Unmarshal(req.Body, &block)
 	ctxlog.Log("block", block)
-	log.Info("Recieved new block : block=%v, blockHash=%s \n", string(block.Bytes()), hex.EncodeToString(block.Hash()))
 	lastHeight := blockchain_manager.GetMainChain().GetLastHeight()
 	if lastHeight+1 != block.Height {
 		ctxlog.Log("Invalid height", true)
@@ -65,7 +62,6 @@ func newBlock(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 				}
 				util.HttpPost(fmt.Sprintf(`http://%s:%d/block/api/newBlock?forward=true`, block.GetRound().Peers[i].Address, block.GetRound().Peers[i].Port), req.Body)
 			}
-			log.Info("Forward block to other succeed.")
 		}
 	}
 	blockchain_manager.MainBlockChainConsensus.BlockFromPeer(ctxlog, block)
