@@ -14,7 +14,7 @@ import (
 type Transactions []*Transaction
 
 type Transaction struct {
-	EventType    string
+	EventType    string         `json:"EventType"`
 	From         types.HexBytes `json:"from"`
 	To           types.HexBytes `json:"to"`
 	TimeStamp    int64          `json:"time"` // UnixTimeStamp
