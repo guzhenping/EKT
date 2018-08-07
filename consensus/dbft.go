@@ -86,7 +86,7 @@ func (dbft DbftConsensus) BlockFromPeer(ctxlog *ctxlog.ContextLog, block blockch
 
 	// 校验打包节点在打包时是否有打包权限
 	log.Info("Validating is the right node.")
-	if result := dbft.PeerTurn(ctxlog, block.Timestamp, dbft.Blockchain.GetLastBlock().Timestamp, block.GetRound().Peers[block.GetRound().CurrentIndex]); !result {
+	if result := dbft.PeerTurn(block.Timestamp, dbft.Blockchain.GetLastBlock().Timestamp, block.GetRound().Peers[block.GetRound().CurrentIndex]); !result {
 		ctxlog.Log("rightNode", result)
 		dbft.BlockManager.SetBlockStatus(block.CurrentHash, blockchain.BLOCK_ERROR_PACK_TIME)
 		return
@@ -281,14 +281,10 @@ func (dbft DbftConsensus) DelegateRun() {
 	interval := dbft.Blockchain.BlockInterval / 4
 	for {
 		// 判断是否是当前节点打包区块
-		log.Info(`Timer tick: is my turn?`)
 
 		ctxlog := ctxlog.NewContextLog("Is my turn ?")
 		if dbft.IsMyTurn(ctxlog) {
-			log.Info("This is my turn, current height is %d.", dbft.Blockchain.GetLastHeight())
 			dbft.Pack(ctxlog)
-		} else {
-			log.Info("No, sleeping %d nano second.", int(interval))
 		}
 		ctxlog.Finish()
 
@@ -297,7 +293,7 @@ func (dbft DbftConsensus) DelegateRun() {
 }
 
 // 判断peer在指定时间是否有打包区块的权力
-func (dbft DbftConsensus) PeerTurn(ctxlog *ctxlog.ContextLog, packTime, lastBlockTime int64, peer p2p.Peer) bool {
+func (dbft DbftConsensus) PeerTurn(packTime, lastBlockTime int64, peer p2p.Peer) bool {
 	log.Info("Validating peer has the right to pack block.")
 
 	// 如果当前高度为0，则区块中不包含round，否则从block中取round
@@ -317,12 +313,6 @@ func (dbft DbftConsensus) PeerTurn(ctxlog *ctxlog.ContextLog, packTime, lastBloc
 			return false
 		}
 	}
-
-	// 对一些变量进行记录
-	ctxlog.Log("lastBlock", dbft.Blockchain.GetLastBlock())
-	ctxlog.Log("CurrentNode", peer)
-	ctxlog.Log("packTime", packTime)
-	ctxlog.Log("lastBlockTime", lastBlockTime)
 
 	intervalInFact, interval := int(packTime-lastBlockTime), int(dbft.Blockchain.BlockInterval/1e6)
 
@@ -360,7 +350,7 @@ func (dbft DbftConsensus) PeerTurn(ctxlog *ctxlog.ContextLog, packTime, lastBloc
 func (dbft DbftConsensus) IsMyTurn(ctxlog *ctxlog.ContextLog) bool {
 	now := time.Now().UnixNano() / 1e6
 	lastPackTime := dbft.Blockchain.GetLastBlock().Timestamp
-	result := dbft.PeerTurn(ctxlog, now, lastPackTime, conf.EKTConfig.Node)
+	result := dbft.PeerTurn(now, lastPackTime, conf.EKTConfig.Node)
 	ctxlog.Log("result", result)
 
 	return result
@@ -383,7 +373,6 @@ func (dbft *DbftConsensus) Run() {
 			// 同步成功之后，failCount变成0
 			failCount = 0
 		} else {
-			log.Info("Synchronizing block at height %d failed. \n", height)
 			failCount++
 			// 如果区块同步失败，会重试三次，三次之后判断当前节点是否是委托人节点，选择不同的同步策略
 			if failCount >= 3 {
