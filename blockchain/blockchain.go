@@ -199,7 +199,7 @@ func (chain *BlockChain) WaitAndPack(ctxLog *ctxlog.ContextLog) *Block {
 			flag = true
 			break
 		default:
-			multiFetcher := pool.NewMultiFatcher(10)
+			multiFetcher := pool.NewMultiFetcher(10)
 			chain.Pool.MultiFetcher <- multiFetcher
 			events := <-multiFetcher.Chan
 			if len(events) > 0 {
