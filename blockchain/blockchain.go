@@ -141,7 +141,7 @@ func (chain *BlockChain) GetBlockByHeightKey(height int64) []byte {
 func (chain *BlockChain) SaveBlock(block Block) {
 	chain.Locker.Lock()
 	defer chain.Locker.Unlock()
-	if chain.GetLastHeight()+1 == block.Height {
+	if chain.GetLastHeight()+1 == block.Height || block.Height == 0 {
 		log.Info("Saving block to database.")
 		db.GetDBInst().Set(block.Hash(), block.Data())
 		data, _ := json.Marshal(block)
