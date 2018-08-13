@@ -622,8 +622,12 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 	}
 	for _, peer := range peers {
 		block, err := getBlockHeader(peer, height)
-		if err != nil || block.Height != height {
-			log.Info("Geting block header by height failed. %v", err)
+		if err != nil {
+			log.Info("Get block header by height failed, block=%v, err=%v. \n", block, err)
+			continue
+		}
+		if block.Height != height {
+			log.Crit("Invalid height from %s. \n", peer.Address)
 			continue
 		}
 		votes, err := getVotes(peer, hex.EncodeToString(block.CurrentHash))
@@ -645,6 +649,7 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 			}
 		}
 	}
+	log.Debug("Synchronize block by height %d failed.\n", height)
 	return false
 }
 
