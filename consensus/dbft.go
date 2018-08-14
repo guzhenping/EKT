@@ -640,6 +640,14 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 			if err != nil {
 				continue
 			}
+			if len(events) == 0 {
+				log.Info("It's a blank block. Don't need to validate next block.")
+				if dbft.RecieveVoteResultWhenBlank(votes, *block) {
+					return true
+				} else {
+					continue
+				}
+			}
 			if dbft.Blockchain.GetLastBlock().ValidateNextBlock(*block, events) {
 				if dbft.RecieveVoteResult(votes) {
 					return true
@@ -682,6 +690,26 @@ func (dbft DbftConsensus) VoteFromPeer(vote blockchain.BlockVote) {
 		log.Info("Current vote results: %s", string(dbft.VoteResults.GetVoteResults(hex.EncodeToString(vote.BlockHash)).Bytes()))
 		log.Info("Vote number is %d, less than %d, waiting for vote. \n", dbft.VoteResults.Number(vote.BlockHash), len(round.Peers)/2+1)
 	}
+}
+
+// deal blank block
+func (dbft DbftConsensus) RecieveVoteResultWhenBlank(votes blockchain.Votes, block blockchain.Block) bool {
+	if !dbft.ValidateVotes(votes) {
+		log.Info("Votes validate failed. %v", votes)
+		return false
+	}
+	status := dbft.BlockManager.GetBlockStatus(votes[0].BlockHash)
+	if status == -1 {
+		dbft.SaveVotes(votes)
+		dbft.Blockchain.SaveBlock(block)
+		dbft.Blockchain.NotifyPool(block)
+		contextLog := ctxlog.NewContextLog("pack from vote result")
+		if dbft.IsMyTurn(contextLog) {
+			dbft.Pack(contextLog)
+		}
+		return true
+	}
+	return false
 }
 
 // 收到从其他节点发送过来的voteResult，校验之后可以写入到区块链中
