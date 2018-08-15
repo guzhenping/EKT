@@ -155,7 +155,7 @@ func (dbft DbftConsensus) getUserEvent(peer p2p.Peer, eventId string) (userevent
 			if err != nil {
 				return nil, err
 			}
-			if !userevent.Validate(tokenIssue) {
+			if !userevent.Validate(&tokenIssue) {
 				return nil, errors.New("Invalid signature")
 			}
 			return &tokenIssue, nil
@@ -165,7 +165,7 @@ func (dbft DbftConsensus) getUserEvent(peer p2p.Peer, eventId string) (userevent
 			if err != nil {
 				return nil, err
 			}
-			if !userevent.Validate(tx) {
+			if !userevent.Validate(&tx) {
 				return nil, errors.New("Invalid signature")
 			}
 			return &tx, nil
@@ -270,7 +270,6 @@ func (dbft DbftConsensus) SendVote(block blockchain.Block) {
 	// 向其他节点发送签名后的vote信息
 	log.Info("Signed this vote, sending vote result to other peers.")
 	for i, peer := range block.GetRound().Peers {
-		// 为了节省节点间带宽，只会向当前round内，距离打包节点近的n/2个节点
 		if (i-block.GetRound().CurrentIndex+len(block.GetRound().Peers))%len(block.GetRound().Peers) <= len(block.GetRound().Peers)/2 {
 			url := fmt.Sprintf(`http://%s:%d/vote/api/vote`, peer.Address, peer.Port)
 			go util.HttpPost(url, vote.Bytes())

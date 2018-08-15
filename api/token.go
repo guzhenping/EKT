@@ -21,8 +21,8 @@ func issueToken(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	if err != nil {
 		return x_resp.Fail(-1, "error request", nil), nil
 	}
-	if userevent.Validate(tokenIssue) {
-		blockchain_manager.GetMainChain().Pool.EventPutter <- &tokenIssue
+	if userevent.Validate(&tokenIssue) {
+		blockchain_manager.GetMainChain().NewUserEvent(&tokenIssue)
 		return x_resp.Success(hex.EncodeToString(tokenIssue.Token.Address())), nil
 	}
 	return x_resp.Fail(-1, "error signature", nil), nil
