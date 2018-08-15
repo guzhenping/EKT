@@ -253,16 +253,7 @@ func (chain *BlockChain) NotifyPool(block Block) {
 		return
 	}
 
-	//block.BlockBody.Events.Range(func(key, value interface{}) bool {
-	//	address, ok1 := key.(string)
-	//	list, ok2 := value.([]string)
-	//	if ok1 && ok2 && len(list) > 0 {
-	//		for _, eventId := range list {
-	//			chain.Pool.Notify(address, eventId)
-	//		}
-	//	}
-	//	return true
-	//})
+	chain.Pool.Notify <- block.BlockBody.Events
 }
 
 func (chain *BlockChain) NewUserEvent(event userevent.IUserEvent) bool {
