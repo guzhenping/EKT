@@ -26,8 +26,8 @@ type Transaction struct {
 	Sign         types.HexBytes `json:"sign"`
 }
 
-type TxResult struct {
-	TxId    string `json:"txId"`
+type UserEventResult struct {
+	EventId string `json:"txId"`
 	Fee     int64  `json:"fee"`
 	Success bool   `json:"success"`
 	FailMsg string `json:"failMsg"`
@@ -47,9 +47,9 @@ func NewTransaction(from, to []byte, timestamp, amount, fee, nonce int64, data, 
 	}
 }
 
-func NewTransactionResult(tx Transaction, fee int64, success bool, failMessage string) *TxResult {
-	return &TxResult{
-		TxId:    tx.TransactionId(),
+func NewUserEventResult(event IUserEvent, fee int64, success bool, failMessage string) *UserEventResult {
+	return &UserEventResult{
+		EventId: event.EventId(),
 		Fee:     fee,
 		Success: success,
 		FailMsg: failMessage,
@@ -64,14 +64,12 @@ func (tx Transaction) GetNonce() int64 {
 	return tx.Nonce
 }
 
-func (tx *Transaction) Signature(priv []byte) error {
-	sign, err := crypto.Crypto(tx.Msg(), priv)
-	tx.Sign = sign
-	return err
-}
-
 func (tx Transaction) GetSign() []byte {
 	return tx.Sign
+}
+
+func (tx *Transaction) SetSign(sign []byte) {
+	tx.Sign = sign
 }
 
 func (tx Transaction) Msg() []byte {
@@ -111,13 +109,13 @@ func FromBytes(data []byte) *Transaction {
 	return &tx
 }
 
-func (txResult *TxResult) ToBytes() []byte {
-	data, _ := json.Marshal(txResult)
+func (usereventResult *UserEventResult) ToBytes() []byte {
+	data, _ := json.Marshal(usereventResult)
 	return data
 }
 
-func (txResult *TxResult) TxResult() (bool, string) {
-	return txResult.Success, txResult.FailMsg
+func (usereventResult *UserEventResult) TxResult() (bool, string) {
+	return usereventResult.Success, usereventResult.FailMsg
 }
 
 func (transactions Transactions) Len() int {
