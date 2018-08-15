@@ -620,6 +620,10 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 		peers = round.Peers
 	}
 	for _, peer := range peers {
+		// 为超级节点进行判断，如果该节点是自己则跳过, 减小同步耗时
+		if peer.Address == conf.EKTConfig.Node.Address {
+			continue
+		}
 		block, err := getBlockHeader(peer, height)
 		if err != nil {
 			log.Info("Get block header by height failed, block=%v, err=%v. \n", block, err)
