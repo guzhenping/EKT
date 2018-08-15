@@ -105,7 +105,7 @@ func (block *Block) CreateGenesisAccount(account types.Account) bool {
 	return true
 }
 
-func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *userevent.TxResult {
+func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *userevent.UserEventResult {
 	account, _ := block.GetAccount(tx.GetFrom())
 	var receiverAccount *types.Account
 	if block.ExistAddress(tx.GetTo()) {
@@ -113,7 +113,7 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 	} else {
 		receiverAccount = types.NewAccount(tx.GetTo())
 	}
-	var txResult *userevent.TxResult
+	var txResult *userevent.UserEventResult
 
 	// 如果fee太少，默认使用系统最少值
 	if fee < block.Fee {
@@ -124,23 +124,23 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 	fee = 0
 
 	if tx.Nonce != account.Nonce+1 {
-		txResult = userevent.NewTransactionResult(tx, fee, false, "invalid nonce")
+		txResult = userevent.NewUserEventResult(&tx, fee, false, "invalid nonce")
 	} else if tx.TokenAddress == "" {
 		if account.GetAmount() < tx.Amount+fee {
-			txResult = userevent.NewTransactionResult(tx, fee, false, "no enough gas")
+			txResult = userevent.NewUserEventResult(&tx, fee, false, "no enough gas")
 		} else {
 			block.TotalFee++
 			account.ReduceAmount(tx.Amount + fee)
 			receiverAccount.AddAmount(tx.Amount)
 			block.StatTree.MustInsert(tx.GetFrom(), account.ToBytes())
 			block.StatTree.MustInsert(tx.GetTo(), receiverAccount.ToBytes())
-			txResult = userevent.NewTransactionResult(tx, fee, true, "")
+			txResult = userevent.NewUserEventResult(&tx, fee, true, "")
 		}
 	} else {
 		if account.Balances[tx.TokenAddress] < tx.Amount {
-			txResult = userevent.NewTransactionResult(tx, fee, false, "no enough amount")
+			txResult = userevent.NewUserEventResult(&tx, fee, false, "no enough amount")
 		} else if account.GetAmount() < fee {
-			txResult = userevent.NewTransactionResult(tx, fee, false, "no enough gas")
+			txResult = userevent.NewUserEventResult(&tx, fee, false, "no enough gas")
 		} else {
 			block.TotalFee++
 			account.Balances[tx.TokenAddress] -= tx.Amount
@@ -152,7 +152,7 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 			receiverAccount.Balances[tx.TokenAddress] += tx.Amount
 			block.StatTree.MustInsert(tx.GetFrom(), account.ToBytes())
 			block.StatTree.MustInsert(tx.GetTo(), receiverAccount.ToBytes())
-			txResult = userevent.NewTransactionResult(tx, fee, true, "")
+			txResult = userevent.NewUserEventResult(&tx, fee, true, "")
 		}
 	}
 	txId, _ := hex.DecodeString(tx.TransactionId())
@@ -278,6 +278,49 @@ func (block *Block) Sign(privKey []byte) error {
 	return err
 }
 
-func (block *Block) IssueToken(event userevent.TokenIssue) {
+func (block *Block) IssueToken(event userevent.TokenIssue) *userevent.UserEventResult {
+	eventId, _ := hex.DecodeString(event.EventId())
+	account, err := block.GetAccount(event.GetFrom())
+
+	if err != nil {
+		eventResult := userevent.NewUserEventResult(&event, 0, false, err.Error())
+		block.TxTree.MustInsert(eventId, eventResult.ToBytes())
+		return eventResult
+	}
+
+	if account.GetNonce()+1 != event.GetNonce() {
+		eventResult := userevent.NewUserEventResult(&event, 0, false, "Invalid nonce")
+		block.TxTree.MustInsert(eventId, eventResult.ToBytes())
+		return eventResult
+	}
+
+	fee := int64(500 * 1e8)
+	if account.Amount < fee {
+		eventResult := userevent.NewUserEventResult(&event, 0, false, "no enough fee")
+		block.TxTree.MustInsert(eventId, eventResult.ToBytes())
+		return eventResult
+	}
+
+	account.Amount -= fee
+	if len(account.Balances) == 0 {
+		account.Balances = make(map[string]int64)
+	}
+	total := Decimals(event.Token.Decimals) * event.Token.Total
+	account.Balances[hex.EncodeToString(event.Token.Address())] = total
+	account.Nonce++
+
 	block.TokenTree.MustInsert(event.Token.Address(), event.Token.Bytes())
+	block.StatTree.MustInsert(event.GetFrom(), account.ToBytes())
+	eventResult := userevent.NewUserEventResult(&event, fee, true, "")
+	block.TxTree.MustInsert(eventId, eventResult.ToBytes())
+
+	return eventResult
+}
+
+func Decimals(decimal int64) int64 {
+	result := int64(1)
+	for i := int64(0); i < decimal; i++ {
+		result *= 10
+	}
+	return result
 }

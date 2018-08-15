@@ -265,6 +265,23 @@ func (chain *BlockChain) NotifyPool(block Block) {
 	//})
 }
 
+func (chain *BlockChain) NewUserEvent(event userevent.IUserEvent) bool {
+	block := chain.GetLastBlock()
+	account, err := block.GetAccount(event.GetFrom())
+	if err != nil {
+		return false
+	}
+	if account.GetNonce() >= event.GetNonce() {
+		return false
+	}
+	if account.GetNonce()+1 == event.GetNonce() {
+		chain.Pool.SingleReady <- event
+	} else {
+		chain.Pool.SingleBlock <- event
+	}
+	return true
+}
+
 func (chain *BlockChain) NewTransaction(tx *userevent.Transaction) bool {
 	block := chain.GetLastBlock()
 	account, err := block.GetAccount(tx.GetFrom())

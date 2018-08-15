@@ -27,6 +27,10 @@ func (event TokenIssue) GetSign() []byte {
 	return event.Signature
 }
 
+func (event *TokenIssue) SetSign(sign []byte) {
+	event.Signature = sign
+}
+
 func (event TokenIssue) GetFrom() []byte {
 	return event.From
 }
