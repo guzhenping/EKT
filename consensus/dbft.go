@@ -25,7 +25,6 @@ import (
 	"github.com/EducationEKT/EKT/pool"
 	"github.com/EducationEKT/EKT/round"
 	"github.com/EducationEKT/EKT/util"
-	"os"
 	"runtime"
 	"strings"
 )
@@ -327,17 +326,17 @@ func (dbft DbftConsensus) PeerTurn(packTime, lastBlockTime int64, peer p2p.Peer)
 	log.Info("Validating peer has the right to pack block.")
 
 	// 如果当前高度为0，则区块中不包含round，否则从block中取round
-	_round := &round.Round{
+	round := &round.Round{
 		Peers:        param.MainChainDelegateNode,
 		CurrentIndex: -1,
 	}
 	if dbft.Blockchain.GetLastHeight() > 0 {
-		_round = dbft.Blockchain.GetLastBlock().GetRound()
+		round = dbft.Blockchain.GetLastBlock().GetRound()
 	}
 
 	// 如果当前高度为0，则需要第一个节点进行打包
 	if dbft.Blockchain.GetLastHeight() == 0 {
-		if _round.Peers[0].Equal(peer) {
+		if round.Peers[0].Equal(peer) {
 			return true
 		} else {
 			return false
@@ -349,11 +348,12 @@ func (dbft DbftConsensus) PeerTurn(packTime, lastBlockTime int64, peer p2p.Peer)
 	// n表示距离上次打包的间隔
 	n := int(intervalInFact) / int(interval)
 	remainder := int(intervalInFact) % int(interval)
-	if remainder > int(interval)/2 {
+
+	if remainder > int(interval)*3/4 {
 		n++
 	}
 
-	// 如果距离上次打包在一个interval之内，返回false
+	// 如果距离上次打包在一个interval之内，返回false，通过vote触发进入打包阶段
 	if n == 0 {
 		return false
 	}
@@ -361,15 +361,10 @@ func (dbft DbftConsensus) PeerTurn(packTime, lastBlockTime int64, peer p2p.Peer)
 	// 超过n个interval则需要第n+1个节点进行打包
 	n++
 
-	// 如果超过了当前round，则重新计算当前round
-	nextRound := _round.Clone()
-	if _round.CurrentIndex+n >= _round.Len() {
-		nextRound = _round.Shuffle(round.GetRandomByHash(dbft.Blockchain.GetLastBlock().CurrentHash))
-	}
-
+	nextRound := round.Clone()
 	// 判断peer是否拥有打包权限
-	nextRound.CurrentIndex = (_round.CurrentIndex + n) % _round.Len()
-	if _round.Peers[_round.CurrentIndex].Equal(peer) {
+	nextRound.CurrentIndex = (round.CurrentIndex + n) % round.Len()
+	if nextRound.Peers[nextRound.CurrentIndex].Equal(peer) {
 		return true
 	} else {
 		return false
@@ -413,8 +408,7 @@ func (dbft *DbftConsensus) Run() {
 						log.Info("This peer is Delegate node, start delegate thread.")
 						// 开启Delegate线程并让此线程sleep
 						dbft.startDelegateThread()
-						ch := make(chan bool)
-						<-ch
+						<-make(chan bool)
 					}
 				}
 				log.Info("Synchronize interval change to blockchain interval")
@@ -481,13 +475,12 @@ func (dbft *DbftConsensus) delegateSync() {
 					lastHeight = dbft.Blockchain.GetLastHeight()
 				} else {
 					log.Debug("Synchronize block at lastHeight %d failed.", lastHeight+1)
+					time.Sleep(dbft.Blockchain.BlockInterval)
 				}
 			}()
 		}
 
 		lastHeight = dbft.Blockchain.GetLastHeight()
-
-		time.Sleep(dbft.Blockchain.BlockInterval)
 	}
 }
 
@@ -509,19 +502,15 @@ func (dbft DbftConsensus) Pack(ctxlog *ctxlog.ContextLog) {
 				CurrentIndex: 0,
 			}
 		} else {
-			duration := block.Timestamp - lastBlock.Timestamp
-			intervalMs := int64(dbft.Blockchain.BlockInterval) / 1e6
 			// 判断是否需要进入下一个round
-			if int64(lastBlock.Round.MyIndex()-lastBlock.Round.CurrentIndex)*intervalMs < duration {
-				block.Round = lastBlock.Round.Shuffle(round.GetRandomByHash(lastBlock.CurrentHash))
-			} else {
-				block.Round = lastBlock.Round
-			}
+			block.Round = lastBlock.Round
 			block.Round.CurrentIndex = block.Round.MyIndex()
 		}
 
 		// 计算hash
 		block.CaculateHash()
+
+		log.Debug("Packed a block at height %d, block info: %s .\n", dbft.Blockchain.GetLastHeight()+1, string(block.Bytes()))
 
 		// 增加打包信息
 		dbft.BlockManager.Insert(*block)
@@ -608,20 +597,13 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 	if dbft.Blockchain.GetLastHeight() >= height {
 		return true
 	}
-	round := &round.Round{
-		Peers:        param.MainChainDelegateNode,
-		CurrentIndex: -1,
-	}
-	if dbft.Blockchain.GetLastHeight() > 0 {
-		round = dbft.Blockchain.GetLastBlock().GetRound()
-	}
 	peers := param.MainChainDelegateNode
 	if dbft.Blockchain.GetLastHeight() > 0 {
-		peers = round.Peers
+		peers = dbft.Blockchain.GetLastBlock().GetRound().Peers
 	}
 	for _, peer := range peers {
 		// 为超级节点进行判断，如果该节点是自己则跳过, 减小同步耗时
-		if peer.Address == conf.EKTConfig.Node.Address {
+		if peer.Equal(conf.EKTConfig.Node) {
 			continue
 		}
 		block, err := getBlockHeader(peer, height)
@@ -660,7 +642,6 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 			}
 		}
 	}
-	log.Debug("Synchronize block by height %d failed.\n", height)
 	return false
 }
 
@@ -701,18 +682,13 @@ func (dbft DbftConsensus) RecieveVoteResultWhenBlank(votes blockchain.Votes, blo
 		log.Info("Votes validate failed. %v", votes)
 		return false
 	}
-	status := dbft.BlockManager.GetBlockStatus(votes[0].BlockHash)
-	if status == -1 {
-		dbft.SaveVotes(votes)
-		dbft.Blockchain.SaveBlock(block)
-		dbft.Blockchain.NotifyPool(block)
-		contextLog := ctxlog.NewContextLog("pack from vote result")
-		if dbft.IsMyTurn(contextLog) {
-			dbft.Pack(contextLog)
-		}
-		return true
+	dbft.SaveVotes(votes)
+	dbft.Blockchain.SaveBlock(block)
+	dbft.Blockchain.NotifyPool(block)
+	if block.Round.Peers[(block.Round.CurrentIndex+1)%block.Round.Len()].Equal(conf.EKTConfig.Node) {
+		dbft.Pack(ctxlog.NewContextLog("Pack signal from vote result."))
 	}
-	return false
+	return true
 }
 
 // 收到从其他节点发送过来的voteResult，校验之后可以写入到区块链中
@@ -733,7 +709,6 @@ func (dbft DbftConsensus) RecieveVoteResult(votes blockchain.Votes) bool {
 	if status > blockchain.BLOCK_ERROR_START && status < blockchain.BLOCK_ERROR_END {
 		// 未同步区块体通过sync同步区块
 		log.Crit("Invalid block and votes, block.hash = %s", hex.EncodeToString(votes[0].BlockHash))
-		os.Exit(-1)
 	}
 
 	// 区块已经校验但未写入链中
@@ -746,13 +721,16 @@ func (dbft DbftConsensus) RecieveVoteResult(votes blockchain.Votes) bool {
 		dbft.Blockchain.SaveBlock(block)
 		body, err := block.Round.Peers[block.Round.CurrentIndex].GetDBValue(block.Body)
 		if err != nil {
-
+			log.Error("Get block body failed, %v", err)
 		}
 		block.BlockBody, err = blockchain.FromBytes2BLockBody(body)
+		if err != nil {
+			log.Error("Get block body failed, %v", err)
+		}
 		dbft.Blockchain.NotifyPool(block)
-		contextLog := ctxlog.NewContextLog("pack from vote result")
-		if dbft.IsMyTurn(contextLog) {
-			dbft.Pack(contextLog)
+		if block.Round.Peers[(block.Round.CurrentIndex+1)%block.Round.Len()].Equal(conf.EKTConfig.Node) {
+			log.Debug("====Pack from vote result")
+			dbft.Pack(ctxlog.NewContextLog("Pack signal from vote result."))
 		}
 		return true
 	}
