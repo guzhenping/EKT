@@ -53,7 +53,6 @@ func init() {
 }
 
 func main() {
-	fmt.Println(conf.EKTConfig.Node)
 	fmt.Printf("server listen on :%d \n", conf.EKTConfig.Node.Port)
 	err := http.ListenAndServe(fmt.Sprintf(":%d", conf.EKTConfig.Node.Port), nil)
 	if err != nil {
