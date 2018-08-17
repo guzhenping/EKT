@@ -3,6 +3,7 @@ package userevent
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"github.com/EducationEKT/EKT/core/types"
 	"github.com/EducationEKT/EKT/crypto"
 )
@@ -20,7 +21,9 @@ func (event TokenIssue) GetNonce() int64 {
 }
 
 func (event TokenIssue) Msg() []byte {
-	return event.Token.Address()
+	return crypto.Sha3_256([]byte(fmt.Sprintf(`{"token": {"name": "%s", "symbol": "%s", "total": %d, "decimals": %d}, "from": "%s", "nonce": %d}`,
+		event.Token.Name, event.Token.Symbol, event.Token.Total, event.Token.Decimals,
+		hex.EncodeToString(event.GetFrom()), event.GetNonce())))
 }
 
 func (event TokenIssue) GetSign() []byte {
