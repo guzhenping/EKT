@@ -107,7 +107,7 @@ func broadcastTx(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 
 func synchronizeTransaction(txId []byte) {
 	for _, peer := range param.MainChainDelegateNode {
-		if value, err := peer.GetDBValue(txId); err != nil {
+		if value, err := peer.GetDBValue(hex.EncodeToString(txId)); err != nil {
 			db.GetDBInst().Set(txId, value)
 		}
 	}
