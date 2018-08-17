@@ -5,8 +5,6 @@ import (
 
 	"github.com/EducationEKT/EKT/blockchain"
 	"github.com/EducationEKT/EKT/blockchain_manager"
-	"github.com/EducationEKT/EKT/log"
-
 	"github.com/EducationEKT/xserver/x_err"
 	"github.com/EducationEKT/xserver/x_http/x_req"
 	"github.com/EducationEKT/xserver/x_http/x_resp"
@@ -23,12 +21,9 @@ func voteBlock(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	var vote blockchain.BlockVote
 	err := json.Unmarshal(req.Body, &vote)
 	if err != nil {
-		log.Info("Invalid vote, abort.")
 		return x_resp.Return(nil, err)
 	}
-	log.Info("Recieved a vote: %s.\n", string(vote.Bytes()))
 	if !vote.Validate() {
-		log.Info("Invalid vote, abort.")
 		return x_resp.Return(false, nil)
 	}
 	go blockchain_manager.GetMainChainConsensus().VoteFromPeer(vote)
@@ -39,7 +34,6 @@ func voteResult(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	var votes blockchain.Votes
 	err := json.Unmarshal(req.Body, &votes)
 	if err != nil {
-		log.Info("Invalid vote, unmarshal fail, abort.")
 		return x_resp.Return(nil, err)
 	}
 	go blockchain_manager.GetMainChainConsensus().RecieveVoteResult(votes)

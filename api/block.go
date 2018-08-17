@@ -9,7 +9,6 @@ import (
 	"github.com/EducationEKT/EKT/blockchain_manager"
 	"github.com/EducationEKT/EKT/conf"
 	"github.com/EducationEKT/EKT/ctxlog"
-	"github.com/EducationEKT/EKT/log"
 	"github.com/EducationEKT/EKT/util"
 
 	"github.com/EducationEKT/xserver/x_err"
@@ -47,7 +46,6 @@ func newBlock(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 	lastHeight := blockchain_manager.GetMainChain().GetLastHeight()
 	if lastHeight+1 != block.Height {
 		ctxlog.Log("Invalid height", true)
-		log.Info("Block height is not right, want %d, get %d, give up voting. \n", lastHeight+1, block.Height)
 		return x_resp.Fail(-1, "error invalid height", nil), nil
 	}
 	IP := strings.Split(req.R.RemoteAddr, ":")[0]
