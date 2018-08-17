@@ -7,6 +7,8 @@ import (
 	"github.com/EducationEKT/EKT/blockchain_manager"
 	"github.com/EducationEKT/EKT/conf"
 	"github.com/EducationEKT/EKT/core/userevent"
+	"github.com/EducationEKT/EKT/crypto"
+	"github.com/EducationEKT/EKT/db"
 	"github.com/EducationEKT/EKT/param"
 	"github.com/EducationEKT/EKT/util"
 	"github.com/EducationEKT/xserver/x_err"
@@ -27,6 +29,7 @@ func issueToken(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 		return x_resp.Fail(-1, "error request", nil), nil
 	}
 	if userevent.Validate(&tokenIssue) {
+		db.GetDBInst().Set(crypto.Sha3_256(tokenIssue.Bytes()), tokenIssue.Bytes())
 		blockchain_manager.GetMainChain().NewUserEvent(&tokenIssue)
 		return x_resp.Success(hex.EncodeToString(tokenIssue.Token.Address())), nil
 	}

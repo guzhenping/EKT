@@ -43,7 +43,7 @@ func (peer Peer) Equal(_peer Peer) bool {
 	return false
 }
 
-func (peer Peer) GetDBValue(key []byte) ([]byte, error) {
-	url := fmt.Sprintf(`http://%s:%d/db/api/get`, peer.Address, peer.Port)
-	return util.HttpPost(url, key)
+func (peer Peer) GetDBValue(key string) ([]byte, error) {
+	url := fmt.Sprintf(`http://%s:%d/db/api/getByHex?hash=%s`, peer.Address, peer.Port, key)
+	return util.HttpGet(url)
 }
