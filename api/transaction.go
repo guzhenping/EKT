@@ -3,8 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-
 	"github.com/EducationEKT/EKT/conf"
 	"github.com/EducationEKT/EKT/crypto"
 	"github.com/EducationEKT/EKT/db"
@@ -91,18 +89,10 @@ func newTransaction(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 }
 
 func broadcastTx(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
-	IP := strings.Split(req.R.RemoteAddr, ":")[0]
-	broadcasted := false
-	for _, peer := range param.MainChainDelegateNode {
-		if peer.Address == IP {
-			broadcasted = true
-			break
-		}
-	}
-	if !broadcasted {
+	if len(req.Query) == 0 {
 		for _, peer := range param.MainChainDelegateNode {
 			if !peer.Equal(conf.EKTConfig.Node) {
-				url := fmt.Sprintf(`http://%s:%d/transaction/api/newTransaction`, peer.Address, peer.Port)
+				url := fmt.Sprintf(`http://%s:%d/transaction/api/newTransaction?broadcast=true`, peer.Address, peer.Port)
 				util.HttpPost(url, req.Body)
 			}
 		}

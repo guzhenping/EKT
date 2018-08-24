@@ -15,7 +15,6 @@ import (
 	"github.com/EducationEKT/xserver/x_http/x_req"
 	"github.com/EducationEKT/xserver/x_http/x_resp"
 	"github.com/EducationEKT/xserver/x_http/x_router"
-	"strings"
 )
 
 func init() {
@@ -37,18 +36,10 @@ func issueToken(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 }
 
 func broadcastTokenIssue(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
-	IP := strings.Split(req.R.RemoteAddr, ":")[0]
-	broadcasted := false
-	for _, peer := range param.MainChainDelegateNode {
-		if peer.Address == IP {
-			broadcasted = true
-			break
-		}
-	}
-	if !broadcasted {
+	if len(req.Query) == 0 {
 		for _, peer := range param.MainChainDelegateNode {
 			if !peer.Equal(conf.EKTConfig.Node) {
-				url := fmt.Sprintf(`http://%s:%d/token/api/issue`, peer.Address, peer.Port)
+				url := fmt.Sprintf(`http://%s:%d/token/api/issue?broadcast=true`, peer.Address, peer.Port)
 				util.HttpPost(url, req.Body)
 			}
 		}
