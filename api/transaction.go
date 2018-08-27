@@ -85,7 +85,7 @@ func newTransaction(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
 		txId := crypto.Sha3_256(tx.Bytes())
 		db.GetDBInst().Set(txId, tx.Bytes())
 	}
-	return x_resp.Return(nil, err)
+	return x_resp.Return(tx.TransactionId(), err)
 }
 
 func broadcastTx(req *x_req.XReq) (*x_resp.XRespContainer, *x_err.XErr) {
