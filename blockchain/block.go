@@ -120,8 +120,8 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 		fee = block.Fee
 	}
 
-	// set fee = 0
-	//fee = 0
+	// set fee = 0, 在官方托管节点期间，免交易费
+	fee = 0
 
 	if tx.Nonce != account.Nonce+1 {
 		txResult = userevent.NewUserEventResult(&tx, fee, false, "invalid nonce")
