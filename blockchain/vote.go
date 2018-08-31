@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
@@ -101,7 +100,6 @@ func (vote VoteResults) Insert(voteResult BlockVote) {
 			}
 		}
 		votes = append(votes, voteResult)
-		sort.Sort(votes)
 	} else {
 		votes = make([]BlockVote, 0)
 		votes = append(votes, voteResult)

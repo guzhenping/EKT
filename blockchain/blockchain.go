@@ -8,13 +8,18 @@ import (
 
 	"errors"
 
+	"encoding/hex"
+	"github.com/EducationEKT/EKT/conf"
 	"github.com/EducationEKT/EKT/core/userevent"
 	"github.com/EducationEKT/EKT/crypto"
 	"github.com/EducationEKT/EKT/ctxlog"
 	"github.com/EducationEKT/EKT/db"
 	"github.com/EducationEKT/EKT/i_consensus"
 	"github.com/EducationEKT/EKT/log"
+	"github.com/EducationEKT/EKT/param"
 	"github.com/EducationEKT/EKT/pool"
+	"github.com/EducationEKT/EKT/round"
+	"os"
 )
 
 var BackboneChainId int64 = 1
@@ -42,8 +47,6 @@ type BlockChain struct {
 	Difficulty    []byte
 	Pool          *pool.TxPool
 	BlockInterval time.Duration
-	Police        BlockPolice
-	BlockManager  *BlockManager
 	PackLock      sync.RWMutex
 }
 
@@ -59,8 +62,6 @@ func NewBlockChain(chainId int64, consensusType i_consensus.ConsensusType, fee i
 		Pool:          pool.NewTxPool(),
 		currentHeight: 0,
 		BlockInterval: interval,
-		Police:        NewBlockPolice(),
-		BlockManager:  NewBlockManager(),
 		PackLock:      sync.RWMutex{},
 	}
 }
@@ -71,10 +72,11 @@ func (chain *BlockChain) GetLastBlock() Block {
 	return chain.currentBlock
 }
 
-func (chain *BlockChain) SetLastBlock(block Block) {
+func (chain *BlockChain) SetLastBlock(block *Block) {
 	chain.currentLocker.Lock()
 	defer chain.currentLocker.Unlock()
-	chain.currentBlock = block
+	block.RecoverMPT()
+	chain.currentBlock = *block
 	chain.currentHeight = block.Height
 }
 
@@ -94,25 +96,13 @@ func (chain *BlockChain) PackSignal(ctxLog *ctxlog.ContextLog, height int64) *Bl
 			}
 			chain.Status = InitStatus
 		}()
-		log.Info("Start pack block at height %d .\n", chain.GetLastHeight()+1)
 		log.Debug("Start pack block at height %d .\n", chain.GetLastHeight()+1)
+
 		block := chain.WaitAndPack(ctxLog)
-		ctxLog.Log("block1", string(block.Bytes()))
-		log.Info("Packed a block at height %d, block info: %s .\n", chain.GetLastHeight()+1, string(block.Bytes()))
-		log.Debug("Packed a block at height %d, block info: %s .\n", chain.GetLastHeight()+1, string(block.Bytes()))
+
 		return block
 	}
 	return nil
-}
-
-func (chain *BlockChain) PackHeightValidate(height int64) bool {
-	if chain.GetLastHeight()+1 != height {
-		return false
-	}
-	if !chain.BlockManager.GetBlockStatusByHeight(height, int64(chain.BlockInterval)) {
-		return false
-	}
-	return true
 }
 
 func (chain *BlockChain) GetBlockByHeight(height int64) (*Block, error) {
@@ -141,14 +131,13 @@ func (chain *BlockChain) GetBlockByHeightKey(height int64) []byte {
 func (chain *BlockChain) SaveBlock(block Block) {
 	chain.Locker.Lock()
 	defer chain.Locker.Unlock()
+
 	if chain.GetLastHeight()+1 == block.Height || block.Height == 0 {
-		log.Info("Saving block to database.")
+		log.Info("Saving block %s to database.", string(block.Bytes()))
 		db.GetDBInst().Set(block.Hash(), block.Data())
-		data, _ := json.Marshal(block)
-		db.GetDBInst().Set(chain.GetBlockByHeightKey(block.Height), data)
-		db.GetDBInst().Set(chain.CurrentBlockKey(), data)
-		chain.SetLastBlock(block)
-		log.Info("Saved block to database.")
+		db.GetDBInst().Set(chain.GetBlockByHeightKey(block.Height), block.Bytes())
+		db.GetDBInst().Set(chain.CurrentBlockKey(), block.Bytes())
+		chain.SetLastBlock(&block)
 	}
 }
 
@@ -188,7 +177,6 @@ func (chain *BlockChain) WaitAndPack(ctxLog *ctxlog.ContextLog) *Block {
 		block.Fee = chain.Fee
 	}
 
-	log.Info("Packing transaction and other events.")
 	start := time.Now().UnixNano()
 	started := false
 	numTx := 0
@@ -232,11 +220,29 @@ func (chain *BlockChain) WaitAndPack(ctxLog *ctxlog.ContextLog) *Block {
 		}
 	}
 
+	address, err := hex.DecodeString(conf.EKTConfig.Node.Account)
+	if err != nil {
+		log.Crit("Invalid config")
+		os.Exit(-1)
+	}
+	block.UpdateMiner(address)
+
 	end := time.Now().UnixNano()
-	fmt.Printf("Total tx: %d, Total time: %d ns, TPS: %d. \n", numTx, end-start, numTx*1e9/int(end-start))
+	log.Debug("Total tx: %d, Total time: %d ns, TPS: %d. \n", numTx, end-start, numTx*1e9/int(end-start))
 
 	chain.UpdateBody(block)
 	block.UpdateMPTPlusRoot()
+
+	if block.Round == nil {
+		block.Round = &round.Round{
+			Peers:        param.MainChainDelegateNode,
+			CurrentIndex: 0,
+		}
+	} else {
+		// 判断是否需要进入下一个round
+		block.Round = chain.GetLastBlock().Round
+		block.Round.CurrentIndex = block.Round.MyIndex()
+	}
 
 	return block
 }
@@ -253,16 +259,24 @@ func (chain *BlockChain) NotifyPool(block Block) {
 		return
 	}
 
-	//block.BlockBody.Events.Range(func(key, value interface{}) bool {
-	//	address, ok1 := key.(string)
-	//	list, ok2 := value.([]string)
-	//	if ok1 && ok2 && len(list) > 0 {
-	//		for _, eventId := range list {
-	//			chain.Pool.Notify(address, eventId)
-	//		}
-	//	}
-	//	return true
-	//})
+	chain.Pool.Notify <- block.BlockBody.Events
+}
+
+func (chain *BlockChain) NewUserEvent(event userevent.IUserEvent) bool {
+	block := chain.GetLastBlock()
+	account, err := block.GetAccount(event.GetFrom())
+	if err != nil {
+		return false
+	}
+	if account.GetNonce() >= event.GetNonce() {
+		return false
+	}
+	if account.GetNonce()+1 == event.GetNonce() {
+		chain.Pool.SingleReady <- event
+	} else {
+		chain.Pool.SingleBlock <- event
+	}
+	return true
 }
 
 func (chain *BlockChain) NewTransaction(tx *userevent.Transaction) bool {
@@ -284,8 +298,9 @@ func (chain *BlockChain) NewTransaction(tx *userevent.Transaction) bool {
 
 func (chain *BlockChain) ValidateNextBlock(ctxlog *ctxlog.ContextLog, block Block, events []userevent.IUserEvent) bool {
 	if !chain.GetLastBlock().ValidateNextBlock(block, events) {
-		log.Info("This block from peer can not recover by last block, abort.")
+		ctxlog.Log("Validate", false)
 		return false
 	}
+	ctxlog.Log("Validate", true)
 	return true
 }

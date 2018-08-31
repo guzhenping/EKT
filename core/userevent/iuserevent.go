@@ -17,6 +17,7 @@ type IUserEvent interface {
 	GetNonce() int64
 	Msg() []byte
 	GetSign() []byte
+	SetSign([]byte)
 	GetFrom() []byte
 	Type() string
 	EventId() string
@@ -31,6 +32,15 @@ func Validate(userEvent IUserEvent) bool {
 	}
 	result := bytes.EqualFold(types.FromPubKeyToAddress(pubKey), userEvent.GetFrom())
 	return result
+}
+
+func SignUserEvent(userEvent IUserEvent, privKey []byte) error {
+	sign, err := crypto.Crypto(userEvent.Msg(), privKey)
+	if err != nil {
+		return err
+	}
+	userEvent.SetSign(sign)
+	return nil
 }
 
 func (events SortedUserEvent) Assert() bool {

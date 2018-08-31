@@ -105,7 +105,7 @@ func (block *Block) CreateGenesisAccount(account types.Account) bool {
 	return true
 }
 
-func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *userevent.TxResult {
+func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *userevent.UserEventResult {
 	account, _ := block.GetAccount(tx.GetFrom())
 	var receiverAccount *types.Account
 	if block.ExistAddress(tx.GetTo()) {
@@ -113,36 +113,34 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 	} else {
 		receiverAccount = types.NewAccount(tx.GetTo())
 	}
-	var txResult *userevent.TxResult
+	var txResult *userevent.UserEventResult
 
 	// 如果fee太少，默认使用系统最少值
 	if fee < block.Fee {
 		fee = block.Fee
 	}
 
-	// fee = 0
+	// set fee = 0, 在官方托管节点期间，免交易费
 	fee = 0
 
 	if tx.Nonce != account.Nonce+1 {
-		txResult = userevent.NewTransactionResult(tx, fee, false, "invalid nonce")
+		txResult = userevent.NewUserEventResult(&tx, fee, false, "invalid nonce")
 	} else if tx.TokenAddress == "" {
 		if account.GetAmount() < tx.Amount+fee {
-			txResult = userevent.NewTransactionResult(tx, fee, false, "no enough gas")
+			txResult = userevent.NewUserEventResult(&tx, fee, false, "no enough gas")
 		} else {
-			block.TotalFee++
 			account.ReduceAmount(tx.Amount + fee)
 			receiverAccount.AddAmount(tx.Amount)
 			block.StatTree.MustInsert(tx.GetFrom(), account.ToBytes())
 			block.StatTree.MustInsert(tx.GetTo(), receiverAccount.ToBytes())
-			txResult = userevent.NewTransactionResult(tx, fee, true, "")
+			txResult = userevent.NewUserEventResult(&tx, fee, true, "")
 		}
 	} else {
 		if account.Balances[tx.TokenAddress] < tx.Amount {
-			txResult = userevent.NewTransactionResult(tx, fee, false, "no enough amount")
+			txResult = userevent.NewUserEventResult(&tx, fee, false, "no enough amount")
 		} else if account.GetAmount() < fee {
-			txResult = userevent.NewTransactionResult(tx, fee, false, "no enough gas")
+			txResult = userevent.NewUserEventResult(&tx, fee, false, "no enough gas")
 		} else {
-			block.TotalFee++
 			account.Balances[tx.TokenAddress] -= tx.Amount
 			account.ReduceAmount(fee)
 			if receiverAccount.Balances == nil {
@@ -152,12 +150,17 @@ func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *usereve
 			receiverAccount.Balances[tx.TokenAddress] += tx.Amount
 			block.StatTree.MustInsert(tx.GetFrom(), account.ToBytes())
 			block.StatTree.MustInsert(tx.GetTo(), receiverAccount.ToBytes())
-			txResult = userevent.NewTransactionResult(tx, fee, true, "")
+			txResult = userevent.NewUserEventResult(&tx, fee, true, "")
 		}
 	}
 	txId, _ := hex.DecodeString(tx.TransactionId())
 
 	block.TxTree.MustInsert(txId, txResult.ToBytes())
+
+	if txResult.Success {
+		block.TotalFee += txResult.Fee
+	}
+
 	return txResult
 }
 
@@ -176,6 +179,18 @@ func (block *Block) UpdateMPTPlusRoot() {
 		block.TokenTree.Lock.RLock()
 		block.TokenRoot = block.TokenTree.Root
 		block.TokenTree.Lock.RUnlock()
+	}
+}
+
+func (block *Block) RecoverMPT() {
+	if block.StatTree == nil {
+		block.StatTree = MPTPlus.MTP_Tree(db.GetDBInst(), block.StatRoot)
+	}
+	if block.TxTree == nil {
+		block.TxTree = MPTPlus.MTP_Tree(db.GetDBInst(), block.TxRoot)
+	}
+	if block.TokenTree == nil {
+		block.TokenTree = MPTPlus.MTP_Tree(db.GetDBInst(), block.TokenRoot)
 	}
 }
 
@@ -218,18 +233,6 @@ func (block Block) ValidateNextBlock(next Block, events []userevent.IUserEvent) 
 	return block.ValidateBlockStat(next, events)
 }
 
-// consensus 模块调用这个函数，获得一个block对象之后发送给其他节点，其他节点同意之后调用上面的NewBlock方法
-func (block *Block) Pack(difficulty []byte) {
-	block.Locker.Lock()
-	defer block.Locker.Unlock()
-	start := time.Now().Nanosecond()
-	log.Info("Caculating block hash.")
-	for ; !bytes.HasPrefix(block.CaculateHash(), difficulty); block.NewNonce() {
-	}
-	end := time.Now().Nanosecond()
-	log.Info("Caculated block hash, cost %d ms. \n", (end-start+1e9)%1e9/1e6)
-}
-
 func (block Block) ValidateBlockStat(next Block, events []userevent.IUserEvent) bool {
 	BlockRecorder.SetBlock(&next)
 	log.Info("Validating block stat merkler proof.")
@@ -256,6 +259,13 @@ func (block Block) ValidateBlockStat(next Block, events []userevent.IUserEvent) 
 		}
 	}
 
+	address, err := hex.DecodeString(next.Round.Peers[next.Round.CurrentIndex].Account)
+	if err != nil {
+		log.Crit("invalid address")
+		return false
+	}
+	_next.UpdateMiner(address)
+
 	// 更新默克尔树根
 	_next.UpdateMPTPlusRoot()
 
@@ -263,13 +273,21 @@ func (block Block) ValidateBlockStat(next Block, events []userevent.IUserEvent) 
 	if !bytes.Equal(next.TxRoot, _next.TxRoot) ||
 		!bytes.Equal(next.StatRoot, _next.StatRoot) ||
 		!bytes.Equal(next.TokenRoot, _next.TokenRoot) {
-		log.Info("next.Data  = %s, \n_next.Data = %s", next.Data(), block.Data())
-		log.Info("next.Hash  = %s, \n_next.Hash = %s \n", hex.EncodeToString(next.Hash()), hex.EncodeToString(_next.CaculateHash()))
 		return false
 	}
 
 	BlockRecorder.SetStatus(hex.EncodeToString(next.CurrentHash), 100)
 	return true
+}
+
+func (block *Block) UpdateMiner(address []byte) {
+	account, err := block.GetAccount(address)
+	if account == nil || err != nil {
+		account = types.NewAccount(address)
+	}
+	account.Amount += block.TotalFee
+
+	block.StatTree.MustInsert(address, account.ToBytes())
 }
 
 func (block *Block) Sign(privKey []byte) error {
@@ -278,6 +296,51 @@ func (block *Block) Sign(privKey []byte) error {
 	return err
 }
 
-func (block *Block) IssueToken(event userevent.TokenIssue) {
+func (block *Block) IssueToken(event userevent.TokenIssue) *userevent.UserEventResult {
+	eventId, _ := hex.DecodeString(event.EventId())
+	account, err := block.GetAccount(event.GetFrom())
+
+	if err != nil {
+		eventResult := userevent.NewUserEventResult(&event, 0, false, err.Error())
+		block.TxTree.MustInsert(eventId, eventResult.ToBytes())
+		return eventResult
+	}
+
+	if account.GetNonce()+1 != event.GetNonce() {
+		eventResult := userevent.NewUserEventResult(&event, 0, false, "Invalid nonce")
+		block.TxTree.MustInsert(eventId, eventResult.ToBytes())
+		return eventResult
+	}
+
+	fee := int64(500 * 1e8)
+	if account.Amount < fee {
+		eventResult := userevent.NewUserEventResult(&event, 0, false, "no enough fee")
+		block.TxTree.MustInsert(eventId, eventResult.ToBytes())
+		return eventResult
+	}
+
+	account.Amount -= fee
+	if len(account.Balances) == 0 {
+		account.Balances = make(map[string]int64)
+	}
+	total := Decimals(event.Token.Decimals) * event.Token.Total
+	account.Balances[hex.EncodeToString(event.Token.Address())] = total
+	account.Nonce++
+
+	block.TotalFee += fee
+
 	block.TokenTree.MustInsert(event.Token.Address(), event.Token.Bytes())
+	block.StatTree.MustInsert(event.GetFrom(), account.ToBytes())
+	eventResult := userevent.NewUserEventResult(&event, fee, true, "")
+	block.TxTree.MustInsert(eventId, eventResult.ToBytes())
+
+	return eventResult
+}
+
+func Decimals(decimal int64) int64 {
+	result := int64(1)
+	for i := int64(0); i < decimal; i++ {
+		result *= 10
+	}
+	return result
 }
