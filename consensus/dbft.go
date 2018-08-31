@@ -26,6 +26,7 @@ import (
 	"github.com/EducationEKT/EKT/util"
 	"runtime"
 	"strings"
+	"bytes"
 )
 
 type DbftConsensus struct {
@@ -647,9 +648,9 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 				} else {
 					continue
 				}
-			}
-			if dbft.Blockchain.GetLastBlock().ValidateNextBlock(*block, events) {
-				if dbft.RecieveVoteResult(votes) {
+			} else {
+				// 处理包含交易的区块同步
+				if dbft.RecieveVoteResultWhenHaveTx(votes, events, *block) {
 					return true
 				} else {
 					continue
@@ -658,6 +659,52 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 		}
 	}
 	return false
+}
+
+// 同步包含交易的区块
+func (dbft DbftConsensus) RecieveVoteResultWhenHaveTx(votes blockchain.Votes, events []userevent.IUserEvent, next blockchain.Block) bool {
+	// 如果不是当前的块的下一个区块，则返回false
+	block := dbft.Blockchain.GetLastBlock()
+	if !bytes.Equal(next.PreviousHash, block.Hash()) || block.Height+1 != next.Height {
+		return false
+	}
+
+	// 设置此block为最新block
+	blockchain.BlockRecorder.SetBlock(&next)
+
+	//根据上一个区块头生成一个新的区块
+	_next := blockchain.NewBlock(block)
+
+	//让新生成的区块执行peer传过来的body中的user events进行计算
+	if len(events) > 0 {
+		for _, event := range events {
+			switch event.Type() {
+			case userevent.TYPE_USEREVENT_TRANSACTION:
+				tx, ok := event.(*userevent.Transaction)
+				if ok {
+					_next.NewTransactionWhenSyncing(*tx, tx.Fee)
+				}
+			case userevent.TYPE_USEREVENT_PUBLIC_TOKEN:
+				issueToken, ok := event.(*userevent.TokenIssue)
+				if ok {
+					_next.IssueToken(*issueToken)
+				}
+			}
+		}
+	}
+
+	// 更新默克尔树根
+	_next.UpdateMPTPlusRoot()
+
+	// 判断默克尔根是否相同
+	if !bytes.Equal(next.TxRoot, _next.TxRoot) ||
+		!bytes.Equal(next.StatRoot, _next.StatRoot) ||
+		!bytes.Equal(next.TokenRoot, _next.TokenRoot) {
+		return false
+	}
+
+	blockchain.BlockRecorder.SetStatus(hex.EncodeToString(next.CurrentHash), 100)
+	return true
 }
 
 // 从其他委托人节点发过来的区块的投票进行记录

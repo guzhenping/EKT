@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
+	"xserver/x_http/x_resp"
 	"github.com/EducationEKT/EKT/MPTPlus"
 	"github.com/EducationEKT/EKT/core/types"
 	"github.com/EducationEKT/EKT/core/userevent"
@@ -15,6 +15,10 @@ import (
 	"github.com/EducationEKT/EKT/db"
 	"github.com/EducationEKT/EKT/log"
 	"github.com/EducationEKT/EKT/round"
+	"github.com/EducationEKT/EKT/param"
+	"github.com/EducationEKT/EKT/util"
+	"github.com/EducationEKT/EKT/conf"
+	"github.com/EducationEKT/EKT/p2p"
 )
 
 var currentBlock *Block = nil
@@ -343,4 +347,70 @@ func Decimals(decimal int64) int64 {
 		result *= 10
 	}
 	return result
+}
+
+// 处理包含交易的区块同步，将相关交易数据存储在本地
+func (block *Block) NewTransactionWhenSyncing(tx userevent.Transaction, fee int64) *userevent.UserEventResult {
+	var txResult *userevent.UserEventResult
+	peers := param.MainChainDelegateNode
+	for _, peer := range peers {
+		// 为超级节点进行判断，如果该节点是自己则跳过, 减小同步耗时
+		if peer.Equal(conf.EKTConfig.Node) {
+			continue
+		}
+
+		account, err := getAccount(peer, hex.EncodeToString(tx.GetFrom()))
+		if err != nil {
+			continue
+		}
+		if account == nil {
+			continue
+		}
+
+		// 存储From账户数据
+		block.StatTree.MustInsert(account.Address, account.ToBytes())
+		var receiverAccount *types.Account
+		if block.ExistAddress(tx.GetTo()) {
+			receiverAccount, _ = getAccount(peer, hex.EncodeToString(tx.GetTo()))
+		} else {
+			receiverAccount = types.NewAccount(tx.GetTo())
+		}
+
+		// 存储To账户数据
+		block.StatTree.MustInsert(receiverAccount.Address, receiverAccount.ToBytes())
+
+		// 如果fee太少，默认使用系统最少值
+		if fee < block.Fee {
+			fee = block.Fee
+		}
+
+		// set fee = 0, 在官方托管节点期间，免交易费
+		fee = 0
+		txResult = userevent.NewUserEventResult(&tx, fee, true, "")
+
+		// 存储本次交易
+		txId, _ := hex.DecodeString(tx.TransactionId())
+		block.TxTree.MustInsert(txId, txResult.ToBytes())
+
+		return txResult
+	}
+	return txResult
+}
+
+// 根据地址获取账户
+func getAccount(peer p2p.Peer, address string) (*types.Account, error) {
+	url := fmt.Sprintf(`http://%s:%d/account/api/info?address=%s`, peer.Address, peer.Port, address)
+	body, err := util.HttpGet(url)
+	if err != nil {
+		return nil, err
+	}
+	var resp x_resp.XRespBody
+	err = json.Unmarshal(body, &resp)
+	data, err := json.Marshal(resp.Result)
+	if err == nil {
+		var account types.Account
+		err = json.Unmarshal(data, &account)
+		return &account, err
+	}
+	return nil, err
 }
