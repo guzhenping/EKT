@@ -275,7 +275,9 @@ func (dbft *DbftConsensus) StableRun() {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Crit(`Consensus occured an unknown error, recovered. %v`, r)
+					var buf [4096]byte
+					runtime.Stack(buf[:], false)
+					log.Crit("Panic occured at delegate thread, %s", string(buf[:]))
 				}
 			}()
 			dbft.Run()
@@ -478,7 +480,9 @@ func (dbft *DbftConsensus) delegateSync() {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						log.Crit("Panic occured, %v", r)
+						var buf [4096]byte
+						runtime.Stack(buf[:], false)
+						log.Crit("Panic occured at delegate sync thread, %s", string(buf[:]))
 					}
 				}()
 				if dbft.SyncHeight(lastHeight + 1) {
@@ -656,6 +660,9 @@ func (dbft DbftConsensus) SyncHeight(height int64) bool {
 					continue
 				}
 			}
+			if dbft.Blockchain.GetLastBlock().ValidateNextBlock(*block, events) {
+				dbft.SaveBlock(block, votes)
+			}
 		}
 	}
 	return false
@@ -788,6 +795,11 @@ func (dbft DbftConsensus) RecieveVoteResult(votes blockchain.Votes) bool {
 	}
 
 	return false
+}
+
+func (dbft DbftConsensus) SaveBlock(block *blockchain.Block, votes blockchain.Votes) {
+	dbft.SaveVotes(votes)
+	dbft.Blockchain.SaveBlock(*block)
 }
 
 // 校验voteResults
