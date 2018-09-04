@@ -106,7 +106,10 @@ func (block *Block) CreateGenesisAccount(account types.Account) bool {
 }
 
 func (block *Block) NewTransaction(tx userevent.Transaction, fee int64) *userevent.UserEventResult {
-	account, _ := block.GetAccount(tx.GetFrom())
+	account, err := block.GetAccount(tx.GetFrom())
+	if err != nil {
+		return userevent.NewUserEventResult(&tx, fee, false, "invalid from")
+	}
 	var receiverAccount *types.Account
 	if block.ExistAddress(tx.GetTo()) {
 		receiverAccount, _ = block.GetAccount(tx.GetTo())
@@ -234,7 +237,6 @@ func (block Block) ValidateNextBlock(next Block, events []userevent.IUserEvent) 
 }
 
 func (block Block) ValidateBlockStat(next Block, events []userevent.IUserEvent) bool {
-	BlockRecorder.SetBlock(&next)
 	log.Info("Validating block stat merkler proof.")
 
 	//根据上一个区块头生成一个新的区块
@@ -254,7 +256,6 @@ func (block Block) ValidateBlockStat(next Block, events []userevent.IUserEvent) 
 				if ok {
 					_next.IssueToken(*issueToken)
 				}
-
 			}
 		}
 	}
@@ -276,7 +277,6 @@ func (block Block) ValidateBlockStat(next Block, events []userevent.IUserEvent) 
 		return false
 	}
 
-	BlockRecorder.SetStatus(hex.EncodeToString(next.CurrentHash), 100)
 	return true
 }
 
@@ -287,7 +287,10 @@ func (block *Block) UpdateMiner(address []byte) {
 	}
 	account.Amount += block.TotalFee
 
-	block.StatTree.MustInsert(address, account.ToBytes())
+	err = block.StatTree.MustInsert(address, account.ToBytes())
+	if err != nil {
+		log.Crit("Update miner failed, %s", err.Error())
+	}
 }
 
 func (block *Block) Sign(privKey []byte) error {
